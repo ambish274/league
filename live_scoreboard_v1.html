@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ArcheryKeeper Live Leaderboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        /* Base styles for TV Display */
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            background-color: #020617; /* Very dark slate, almost black */
+            color: white;
+            overflow: hidden; /* Hide all scrollbars */
+            font-family: 'Inter', system-ui, sans-serif;
+            cursor: none; /* Hide mouse cursor on TV by default */
+        }
+        
+        /* Show cursor when moving mouse (for the admin) */
+        body.mouse-moving {
+            cursor: default;
+        }
+
+        /* The scrolling container */
+        #scroll-wrapper {
+            position: absolute;
+            top: 8vh; /* Leave room for fixed header */
+            left: 0;
+            width: 100%;
+            height: 92vh;
+            overflow: hidden;
+        }
+
+        .board-content {
+            position: absolute;
+            width: 100%;
+            padding: 0 4vw;
+        }
+
+        /* Table Styling */
+        .leaderboard-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0 0.5vh;
+            margin-bottom: 4vh;
+        }
+
+        .class-header {
+            text-align: left;
+            padding: 1vh 1vw;
+            color: #34d399; /* Emerald 400 */
+            border-bottom: 0.2vh solid #064e3b;
+            text-transform: uppercase;
+            letter-spacing: 0.2vw;
+            font-weight: 900;
+        }
+
+        .row-bg:nth-child(even) {
+            background-color: rgba(30, 41, 59, 0.5); /* Slate 800 transparent */
+        }
+
+        .col-rank { width: 10%; text-align: center; font-weight: 900; }
+        .col-name { width: 45%; text-align: left; font-weight: 700; }
+        .col-score { width: 20%; text-align: center; font-weight: 900; color: #f8fafc; }
+        .col-thru { width: 25%; text-align: right; font-weight: 700; color: #fbbf24; padding-right: 1vw;}
+
+        /* Medals */
+        .rank-1 { color: #facc15; text-shadow: 0 0 10px rgba(250, 204, 21, 0.4); } /* Gold */
+        .rank-2 { color: #cbd5e1; } /* Silver */
+        .rank-3 { color: #b45309; } /* Bronze */
+        .rank-other { color: #64748b; }
+        
+        .thru-finished { color: #10b981; } /* Green when finished */
+
+    </style>
+</head>
+<body id="main-body" ondblclick="app.toggleAdminPanel()">
+
+    <!-- Fixed Header -->
+    <header class="fixed top-0 left-0 w-full h-[8vh] bg-slate-900 border-b border-slate-800 flex justify-between items-center px-[4vw] z-50 shadow-2xl">
+        <div class="flex items-center gap-3">
+            <i class="fa-solid fa-bullseye text-emerald-500" style="font-size: 3.5vh;"></i>
+            <h1 style="font-size: 3vh; font-weight: 900; letter-spacing: 0.1vw;">Archery<span class="text-emerald-500">Keeper</span></h1>
+        </div>
+        <div class="text-slate-400 font-bold tracking-widest uppercase" style="font-size: 2vh;">
+            Live Leaderboard
+        </div>
+    </header>
+
+    <!-- Live Status Indicator -->
+    <div id="live-indicator" class="fixed bottom-4 left-4 z-50 flex items-center gap-2 bg-slate-900/90 px-4 py-2 rounded-full border border-slate-700 shadow-2xl backdrop-blur-md transition-opacity duration-300">
+        <div class="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse"></div>
+        <span class="text-emerald-400 font-bold tracking-widest text-[10px] uppercase">Connecting...</span>
+    </div>
+
+    <!-- The Scrolling Canvas -->
+    <div id="scroll-wrapper">
+        <!-- We use two identical blocks that leapfrog each other to create an infinite seamless scroll -->
+        <div id="board-a" class="board-content"></div>
+        <div id="board-b" class="board-content"></div>
+    </div>
+
+    <!-- Hidden Admin Panel (Double Click to open) -->
+    <div id="admin-panel" class="fixed bottom-5 right-5 bg-slate-800 border-2 border-emerald-500 p-6 rounded-2xl shadow-2xl z-[100] hidden flex flex-col gap-4 w-80 backdrop-blur-md opacity-95" ondblclick="event.stopPropagation()">
+        <div class="flex justify-between items-center border-b border-slate-700 pb-2">
+            <h3 class="font-bold text-emerald-400 uppercase tracking-widest"><i class="fa-solid fa-sliders mr-2"></i>Display Controls</h3>
+            <button onclick="app.toggleAdminPanel()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-times"></i></button>
+        </div>
+        
+        <div>
+            <label class="flex justify-between text-xs font-bold text-slate-300 uppercase mb-2">
+                <span>Text Size (Zoom)</span>
+                <span id="zoom-val-display" class="text-emerald-400">1.8vw</span>
+            </label>
+            <input type="range" id="zoom-slider" min="1.0" max="4.0" step="0.1" value="1.8" class="w-full accent-emerald-500" oninput="app.updateZoom()">
+        </div>
+
+        <div>
+            <label class="flex justify-between text-xs font-bold text-slate-300 uppercase mb-2">
+                <span>Scroll Speed</span>
+                <span id="speed-val-display" class="text-emerald-400">Normal</span>
+            </label>
+            <input type="range" id="speed-slider" min="0.1" max="3.0" step="0.1" value="0.8" class="w-full accent-emerald-500" oninput="app.updateSpeed()">
+        </div>
+        
+        <div class="text-[10px] text-slate-500 mt-2 text-center uppercase tracking-widest">Double-click background to hide</div>
+    </div>
+
+    <script>
+        const app = {
+            // ==========================================
+            // REQUIRED: PASTE YOUR GOOGLE SCRIPT URL HERE
+            // ==========================================
+            googleAppUrl: "https://script.google.com/macros/s/AKfycbx750MzRL3CvnsrjLH_u2EXRn0ooiwyTHSGW_3U-Y0kxKpaoj4rSdej5qHIHiCoRI6UZg/exec",
+
+            // Configuration
+            speed: 0.8, // Pixels per frame
+            baseFontSizeVW: 1.8, 
+            
+            // Animation state
+            posA: 0,
+            posB: 0,
+            boardHeight: 0,
+            animationId: null,
+            lastDataStr: "",
+
+            init() {
+                // Apply base font size
+                this.updateZoom();
+                
+                // Fetch live data immediately, then ping every 15 seconds
+                this.fetchLiveScores();
+                setInterval(() => this.fetchLiveScores(), 15000);
+
+                // Mouse movement detection (hide cursor on TV after 3 seconds of stillness)
+                let mouseTimer = null;
+                document.addEventListener('mousemove', () => {
+                    document.body.classList.add('mouse-moving');
+                    clearTimeout(mouseTimer);
+                    mouseTimer = setTimeout(() => document.body.classList.remove('mouse-moving'), 3000);
+                });
+            },
+
+            async fetchLiveScores() {
+                const ind = document.getElementById('live-indicator');
+                if (ind) ind.classList.remove('opacity-50');
+
+                try {
+                    // Only fetch if a URL is provided
+                    if (!this.googleAppUrl || this.googleAppUrl === "YOUR_WEB_APP_URL_HERE") {
+                        if (ind) ind.innerHTML = `<div class="w-2.5 h-2.5 bg-orange-500 rounded-full"></div><span class="text-orange-400 font-bold tracking-widest text-[10px] uppercase">Missing URL</span>`;
+                        return;
+                    }
+
+                    const response = await fetch(this.googleAppUrl, {
+                        method: "POST",
+                        headers: { "Content-Type": "text/plain" },
+                        body: JSON.stringify({ action: "getLiveLeaderboardData" })
+                    });
+                    const result = await response.json();
+                    
+                    if (ind) {
+                        ind.classList.add('opacity-50');
+                        ind.innerHTML = `<div class="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse"></div><span class="text-emerald-400 font-bold tracking-widest text-[10px] uppercase">Live</span>`;
+                    }
+
+                    if (result.status === 'success') {
+                        const newStr = JSON.stringify(result.data);
+                        // Only rebuild and calculate the board if the data actually changed!
+                        if (newStr !== this.lastDataStr) {
+                            this.lastDataStr = newStr;
+                            this.updateBoard(result.data);
+                        }
+                    }
+                } catch (e) {
+                    if (ind) {
+                        ind.innerHTML = `<div class="w-2.5 h-2.5 bg-red-500 rounded-full"></div><span class="text-red-400 font-bold tracking-widest text-[10px] uppercase">Offline</span>`;
+                    }
+                }
+            },
+
+            updateBoard(data) {
+                const htmlContent = this.buildBoardHTML(data);
+                
+                const boardA = document.getElementById('board-a');
+                const boardB = document.getElementById('board-b');
+                
+                boardA.innerHTML = htmlContent;
+                boardB.innerHTML = htmlContent;
+
+                // Wait a moment for DOM to render to calculate new heights
+                setTimeout(() => {
+                    this.boardHeight = boardA.getBoundingClientRect().height;
+                    // If it isn't scrolling yet, start it!
+                    if (!this.animationId) {
+                        this.startScroll();
+                    }
+                }, 100);
+            },
+
+            buildBoardHTML(data) {
+                let html = '';
+                // Add top padding so it starts off-screen beautifully
+                html += `<div style="height: 100vh;"></div>`; 
+
+                data.forEach(c => {
+                    html += `<table class="leaderboard-table">`;
+                    html += `<thead><tr><th colspan="4" class="class-header" style="font-size: 1.2em;">${c.className}</th></tr></thead>`;
+                    html += `<tbody>`;
+                    
+                    c.shooters.forEach(s => {
+                        let rankClass = s.rank === 1 ? 'rank-1' : s.rank === 2 ? 'rank-2' : s.rank === 3 ? 'rank-3' : 'rank-other';
+                        let thruClass = s.thru === 'FINISHED' ? 'thru-finished' : '';
+                        
+                        html += `<tr class="row-bg">
+                            <td class="col-rank ${rankClass} py-[1.5vh]">${s.rank}</td>
+                            <td class="col-name py-[1.5vh]">${s.name}</td>
+                            <td class="col-score py-[1.5vh]">${s.score}</td>
+                            <td class="col-thru ${thruClass} py-[1.5vh]">${s.thru}</td>
+                        </tr>`;
+                    });
+                    
+                    html += `</tbody></table>`;
+                });
+                
+                // Add bottom padding
+                html += `<div style="height: 10vh;"></div>`;
+                return html;
+            },
+
+            startScroll() {
+                const boardA = document.getElementById('board-a');
+                const boardB = document.getElementById('board-b');
+                
+                this.boardHeight = boardA.getBoundingClientRect().height;
+                
+                // Position B exactly below A
+                this.posA = 0;
+                this.posB = this.boardHeight;
+                
+                // Initial placement
+                boardA.style.transform = `translateY(${this.posA}px)`;
+                boardB.style.transform = `translateY(${this.posB}px)`;
+
+                // Start loop
+                if (this.animationId) cancelAnimationFrame(this.animationId);
+                this.scrollLoop();
+            },
+
+            scrollLoop() {
+                const boardA = document.getElementById('board-a');
+                const boardB = document.getElementById('board-b');
+
+                // Move both up by the speed value
+                this.posA -= this.speed;
+                this.posB -= this.speed;
+
+                // If A is completely off the top of the screen, snap it to the bottom of B
+                if (this.posA <= -this.boardHeight) {
+                    this.posA = this.posB + this.boardHeight;
+                }
+                
+                // If B is completely off the top of the screen, snap it to the bottom of A
+                if (this.posB <= -this.boardHeight) {
+                    this.posB = this.posA + this.boardHeight;
+                }
+
+                // Apply the movement
+                boardA.style.transform = `translateY(${this.posA}px)`;
+                boardB.style.transform = `translateY(${this.posB}px)`;
+
+                // Loop forever
+                this.animationId = requestAnimationFrame(() => this.scrollLoop());
+            },
+
+            // --- Admin Panel Controls ---
+            toggleAdminPanel() {
+                const panel = document.getElementById('admin-panel');
+                panel.classList.toggle('hidden');
+                document.body.classList.add('mouse-moving');
+            },
+
+            updateZoom() {
+                const val = document.getElementById('zoom-slider').value;
+                this.baseFontSizeVW = parseFloat(val);
+                document.getElementById('zoom-val-display').textContent = val + 'vw';
+                
+                // Apply font size to the wrapper so all EM/VW units scale inside it
+                document.getElementById('scroll-wrapper').style.fontSize = this.baseFontSizeVW + 'vw';
+                
+                // Recalculate heights because changing font size changes table height!
+                setTimeout(() => {
+                    const boardA = document.getElementById('board-a');
+                    this.boardHeight = boardA.getBoundingClientRect().height;
+                    // Reset positions to prevent snapping glitches
+                    this.posA = 0;
+                    this.posB = this.boardHeight;
+                }, 50);
+            },
+
+            updateSpeed() {
+                const val = document.getElementById('speed-slider').value;
+                this.speed = parseFloat(val);
+                
+                let display = "Normal";
+                if (this.speed < 0.5) display = "Slow";
+                else if (this.speed > 1.5) display = "Fast";
+                document.getElementById('speed-val-display').textContent = display;
+            }
+        };
+
+        // Boot up the app
+        window.onload = () => {
+            app.init();
+        };
+
+    </script>
+</body>
+</html>
